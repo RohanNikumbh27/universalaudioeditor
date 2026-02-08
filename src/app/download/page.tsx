@@ -10,11 +10,17 @@ import {
   AlertCircle,
   Music,
   Video,
+  Scissors,
+  Film,
+  ArrowRight,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { setSharedFile } from "@/lib/fileTransfer";
 
 type OutputFormat = "mp3" | "mp4" | "wav" | "webm";
 
 export default function DownloadPage() {
+  const router = useRouter();
   const [url, setUrl] = useState("");
   const [format, setFormat] = useState<OutputFormat>("mp3");
   const [loading, setLoading] = useState(false);
@@ -23,6 +29,8 @@ export default function DownloadPage() {
   const [progress, setProgress] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const [toast, setToast] = useState("");
+  const [downloadedFile, setDownloadedFile] = useState<File | null>(null);
+  const [mediaType, setMediaType] = useState<"audio" | "video" | null>(null);
 
   const handleDownload = async () => {
     if (!url.trim()) {
@@ -57,6 +65,12 @@ export default function DownloadPage() {
       const blob = await response.blob();
       setProgress(90);
 
+      const detectedType: "audio" | "video" | null = contentType.includes("audio")
+        ? "audio"
+        : contentType.includes("video")
+          ? "video"
+          : null;
+
       let extension = format;
       if (contentType.includes("audio")) {
         extension = format === "mp4" || format === "webm" ? "mp3" : format;
@@ -64,14 +78,21 @@ export default function DownloadPage() {
         extension = format === "mp3" || format === "wav" ? "mp4" : format;
       }
 
+      const fileName = `download.${extension}`;
+
       const downloadUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = downloadUrl;
-      a.download = `download.${extension}`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(downloadUrl);
+
+      const mimeType = contentType || (detectedType === "audio" ? `audio/${extension}` : `video/${extension}`);
+      const file = new File([blob], fileName, { type: mimeType });
+      setDownloadedFile(file);
+      setMediaType(detectedType);
 
       setProgress(100);
       setSuccess(true);
@@ -90,6 +111,16 @@ export default function DownloadPage() {
     const timer = setTimeout(() => setToast(""), 3000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  const handleNextAction = () => {
+    if (!downloadedFile || !mediaType) return;
+    setSharedFile(downloadedFile);
+    if (mediaType === "audio") {
+      router.push("/trim");
+    } else {
+      router.push("/audio-to-video");
+    }
+  };
 
   const formats: { value: OutputFormat; label: string; icon: typeof Music }[] = [
     { value: "mp3", label: "MP3", icon: Music },
@@ -134,6 +165,8 @@ export default function DownloadPage() {
                   setUrl(e.target.value);
                   setError("");
                   setSuccess(false);
+                  setDownloadedFile(null);
+                  setMediaType(null);
                 }}
                 placeholder="https://example.com/audio.mp3"
                 className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-10 pr-4 text-white placeholder-zinc-600 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all"
@@ -210,6 +243,42 @@ export default function DownloadPage() {
               </>
             )}
           </button>
+
+          {/* Contextual Next Action */}
+          <AnimatePresence>
+            {success && downloadedFile && mediaType && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 5 }}
+                transition={{ delay: 0.3, duration: 0.4 }}
+                className="mt-4"
+              >
+                <button
+                  onClick={handleNextAction}
+                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl border font-semibold text-sm transition-all ${
+                    mediaType === "audio"
+                      ? "border-pink-500/30 bg-pink-500/10 text-pink-300 hover:bg-pink-500/20 hover:border-pink-400/50 hover:shadow-lg hover:shadow-pink-500/10"
+                      : "border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 hover:border-blue-400/50 hover:shadow-lg hover:shadow-blue-500/10"
+                  }`}
+                >
+                  {mediaType === "audio" ? (
+                    <>
+                      <Scissors className="h-4 w-4" />
+                      Trim this Audio
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  ) : (
+                    <>
+                      <Film className="h-4 w-4" />
+                      Convert to Audio
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Info */}

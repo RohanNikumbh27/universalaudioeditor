@@ -17,6 +17,7 @@ import {
   Pause,
 } from "lucide-react";
 import { getFFmpeg, formatTime } from "@/lib/ffmpeg";
+import { getSharedFile } from "@/lib/fileTransfer";
 import { fetchFile } from "@ffmpeg/util";
 import AudioPlayer from "@/components/AudioPlayer";
 
@@ -68,6 +69,12 @@ export default function AudioToVideoPage() {
     };
     video.src = URL.createObjectURL(f);
   }, []);
+
+  // Auto-load file transferred from the download page
+  useEffect(() => {
+    const shared = getSharedFile();
+    if (shared) handleFile(shared);
+  }, [handleFile]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {

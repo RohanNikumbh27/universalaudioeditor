@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Film,
@@ -12,6 +12,9 @@ import {
   Download,
   X,
   FileVideo,
+  Scissors,
+  Play,
+  Pause,
 } from "lucide-react";
 import { getFFmpeg, formatTime } from "@/lib/ffmpeg";
 import { fetchFile } from "@ffmpeg/util";
@@ -29,6 +32,18 @@ export default function AudioToVideoPage() {
   const [duration, setDuration] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Trim state
+  const [showTrim, setShowTrim] = useState(false);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(0);
+  const [trimming, setTrimming] = useState(false);
+  const [trimProgress, setTrimProgress] = useState(0);
+  const [trimmedUrl, setTrimmedUrl] = useState("");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const trimAudioRef = useRef<HTMLAudioElement>(null);
 
   const handleFile = useCallback((f: File) => {
     if (!f.type.startsWith("video/")) {
@@ -119,6 +134,105 @@ export default function AudioToVideoPage() {
     { value: "aac", label: "AAC" },
     { value: "ogg", label: "OGG" },
   ];
+
+  // When outputUrl changes, get extracted audio duration
+  useEffect(() => {
+    if (!outputUrl) {
+      setAudioDuration(0);
+      setShowTrim(false);
+      setTrimmedUrl("");
+      return;
+    }
+    const audio = new Audio(outputUrl);
+    audio.addEventListener("loadedmetadata", () => {
+      setAudioDuration(audio.duration);
+      setTrimEnd(audio.duration);
+    });
+  }, [outputUrl]);
+
+  // Playback tracking for trim preview
+  useEffect(() => {
+    const audio = trimAudioRef.current;
+    if (!audio) return;
+    const onTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+      if (audio.currentTime >= trimEnd) {
+        audio.pause();
+        setIsPlaying(false);
+      }
+    };
+    const onEnded = () => setIsPlaying(false);
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("ended", onEnded);
+    return () => {
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("ended", onEnded);
+    };
+  }, [trimEnd, showTrim]);
+
+  const toggleTrimPreview = () => {
+    const audio = trimAudioRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      audio.currentTime = trimStart;
+      audio.play();
+      setIsPlaying(true);
+    }
+  };
+
+  const handleTrimAudio = async () => {
+    if (!outputUrl) return;
+    setTrimming(true);
+    setTrimProgress(0);
+    setTrimmedUrl("");
+
+    try {
+      const ffmpeg = await getFFmpeg();
+      setTrimProgress(20);
+
+      const resp = await fetch(outputUrl);
+      const audioData = await resp.arrayBuffer();
+      const inputName = `trim-input.${format}`;
+      const outputName = `trim-output.${format}`;
+
+      await ffmpeg.writeFile(inputName, new Uint8Array(audioData));
+      setTrimProgress(40);
+
+      const startStr = formatTime(trimStart).replace(".", ":");
+      const durationSecs = trimEnd - trimStart;
+
+      await ffmpeg.exec([
+        "-i", inputName,
+        "-ss", startStr,
+        "-t", durationSecs.toString(),
+        "-c", "copy",
+        outputName,
+      ]);
+      setTrimProgress(80);
+
+      const data = await ffmpeg.readFile(outputName);
+      const uint8 = new Uint8Array(data as Uint8Array);
+      const blob = new Blob([uint8], { type: `audio/${format}` });
+      const url = URL.createObjectURL(blob);
+      setTrimmedUrl(url);
+      setTrimProgress(100);
+
+      await ffmpeg.deleteFile(inputName);
+      await ffmpeg.deleteFile(outputName);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Trimming failed. Try again.");
+    } finally {
+      setTrimming(false);
+    }
+  };
+
+  const trimmedDuration = trimEnd - trimStart;
+  const selectionLeft = audioDuration > 0 ? (trimStart / audioDuration) * 100 : 0;
+  const selectionWidth = audioDuration > 0 ? ((trimEnd - trimStart) / audioDuration) * 100 : 100;
+  const playheadPos = audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0;
 
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
@@ -269,15 +383,197 @@ export default function AudioToVideoPage() {
                   </span>
                 </div>
                 <audio controls src={outputUrl} className="w-full mb-3" />
-                <a
-                  href={outputUrl}
-                  download={`extracted-audio.${format}`}
-                  className="glow-btn inline-flex items-center gap-2 text-sm px-4 py-2"
-                >
-                  <Download className="h-4 w-4" />
-                  Download {format.toUpperCase()}
-                </a>
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href={outputUrl}
+                    download={`extracted-audio.${format}`}
+                    className="glow-btn inline-flex items-center gap-2 text-sm px-4 py-2"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download {format.toUpperCase()}
+                  </a>
+                  <button
+                    onClick={() => {
+                      setShowTrim(!showTrim);
+                      setTrimmedUrl("");
+                      setTrimStart(0);
+                      if (audioDuration > 0) setTrimEnd(audioDuration);
+                    }}
+                    className={`inline-flex items-center gap-2 text-sm px-4 py-2 rounded-xl border font-semibold transition-all ${
+                      showTrim
+                        ? "border-pink-500/50 bg-pink-500/10 text-pink-300"
+                        : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/20 hover:text-white"
+                    }`}
+                  >
+                    <Scissors className="h-4 w-4" />
+                    {showTrim ? "Hide Trim" : "Trim Audio"}
+                  </button>
+                </div>
               </div>
+
+              {/* Inline Trim Panel */}
+              {showTrim && audioDuration > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="mt-4 rounded-xl border border-pink-500/15 bg-pink-500/5 p-4"
+                >
+                  {/* Hidden audio for trim preview */}
+                  <audio ref={trimAudioRef} src={outputUrl} preload="metadata" />
+
+                  <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                    <Scissors className="h-4 w-4 text-pink-400" />
+                    Trim Extracted Audio
+                  </h4>
+
+                  {/* Visual Timeline */}
+                  <div className="relative h-12 rounded-lg bg-white/5 border border-white/10 mb-4 overflow-hidden">
+                    <div
+                      className="absolute top-0 h-full bg-gradient-to-r from-violet-500/20 to-pink-500/20 border-x-2 border-pink-400/50"
+                      style={{
+                        left: `${selectionLeft}%`,
+                        width: `${selectionWidth}%`,
+                      }}
+                    />
+                    {isPlaying && (
+                      <div
+                        className="absolute top-0 h-full w-0.5 bg-white/70 transition-all duration-75"
+                        style={{ left: `${playheadPos}%` }}
+                      />
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center gap-[1px] px-2 opacity-30">
+                      {Array.from({ length: 60 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="bg-pink-400 rounded-full"
+                          style={{
+                            width: "2px",
+                            height: `${Math.random() * 24 + 4}px`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Range Controls */}
+                  <div className="space-y-3 mb-3">
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
+                        <span>Start: {formatTime(trimStart)}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={audioDuration}
+                        step={0.01}
+                        value={trimStart}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (v < trimEnd) setTrimStart(v);
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
+                        <span>End: {formatTime(trimEnd)}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={audioDuration}
+                        step={0.01}
+                        value={trimEnd}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (v > trimStart) setTrimEnd(v);
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Duration and preview */}
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-xs text-zinc-500">
+                      Selected: {formatTime(trimmedDuration)} of{" "}
+                      {formatTime(audioDuration)}
+                    </p>
+                    <button
+                      onClick={toggleTrimPreview}
+                      className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/10 transition-colors"
+                    >
+                      {isPlaying ? (
+                        <Pause className="h-3 w-3" />
+                      ) : (
+                        <Play className="h-3 w-3" />
+                      )}
+                      {isPlaying ? "Pause" : "Preview"}
+                    </button>
+                  </div>
+
+                  {/* Trim progress */}
+                  {trimming && (
+                    <div className="mb-4">
+                      <div className="progress-bar">
+                        <div
+                          className="progress-bar-fill"
+                          style={{ width: `${trimProgress}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-zinc-500 mt-2">
+                        Trimming... {trimProgress}%
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Trimmed output */}
+                  {trimmedUrl && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mb-4 rounded-lg border border-green-500/20 bg-green-500/5 p-3"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
+                        <span className="text-xs font-medium text-green-400">
+                          Trimmed successfully!
+                        </span>
+                      </div>
+                      <audio controls src={trimmedUrl} className="w-full mb-2" />
+                      <a
+                        href={trimmedUrl}
+                        download={`trimmed-audio.${format}`}
+                        className="glow-btn inline-flex items-center gap-2 text-xs px-3 py-1.5"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Download Trimmed {format.toUpperCase()}
+                      </a>
+                    </motion.div>
+                  )}
+
+                  {/* Trim button */}
+                  {!trimmedUrl && (
+                    <button
+                      onClick={handleTrimAudio}
+                      disabled={trimming || trimmedDuration <= 0}
+                      className="glow-btn w-full flex items-center justify-center gap-2 py-2.5 text-sm"
+                    >
+                      {trimming ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Trimming...
+                        </>
+                      ) : (
+                        <>
+                          <Scissors className="h-4 w-4" />
+                          Trim & Download
+                        </>
+                      )}
+                    </button>
+                  )}
+                </motion.div>
+              )}
             </motion.div>
           )}
 

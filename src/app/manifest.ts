@@ -7,9 +7,9 @@ export default function manifest(): MetadataRoute.Manifest {
     description:
       "Download, convert, and trim audio and video files right in your browser. Fast, free, and private.",
     start_url: "/",
-    display: "standalone",
-    background_color: "#0a0a0a",
-    theme_color: "#8b5cf6",
+    display: "fullscreen",
+    background_color: "#06060e",
+    theme_color: "#06060e",
     icons: [
       {
         src: "/icon.svg",

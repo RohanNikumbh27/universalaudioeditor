@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Menu,
   X,
+  Home,
   Download,
   Film,
   Scissors,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 
 const navLinks = [
+  { href: "/", label: "Home", icon: Home },
   { href: "/download", label: "Download", icon: Download },
   { href: "/audio-to-video", label: "Audio to Video", icon: Film },
   { href: "/trim", label: "Trim", icon: Scissors },
@@ -24,7 +26,7 @@ export default function Navbar() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-black/40 backdrop-blur-xl">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="glass-card mt-3 flex h-16 items-center justify-between px-4 sm:px-6">
           {/* Logo */}

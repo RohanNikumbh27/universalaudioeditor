@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { motion } from "framer-motion";
+import { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Download,
   Link2,
@@ -22,6 +22,7 @@ export default function DownloadPage() {
   const [success, setSuccess] = useState(false);
   const [progress, setProgress] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
+  const [toast, setToast] = useState("");
 
   const handleDownload = async () => {
     if (!url.trim()) {
@@ -74,6 +75,7 @@ export default function DownloadPage() {
 
       setProgress(100);
       setSuccess(true);
+      setToast("File downloaded successfully!");
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Download failed. Please check the URL and try again.");
@@ -81,6 +83,13 @@ export default function DownloadPage() {
       setLoading(false);
     }
   };
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(""), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const formats: { value: OutputFormat; label: string; icon: typeof Music }[] = [
     { value: "mp3", label: "MP3", icon: Music },
@@ -183,18 +192,6 @@ export default function DownloadPage() {
             </motion.div>
           )}
 
-          {/* Success Message */}
-          {success && (
-            <motion.div
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-6 flex items-center gap-2 rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-400"
-            >
-              <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-              File downloaded successfully!
-            </motion.div>
-          )}
-
           {/* Download Button */}
           <button
             onClick={handleDownload}
@@ -220,6 +217,22 @@ export default function DownloadPage() {
           Supports direct links to audio and video files. The file is fetched through our server and sent to your browser.
         </p>
       </motion.div>
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/15 backdrop-blur-lg px-5 py-3 shadow-xl shadow-violet-500/10"
+          >
+            <CheckCircle2 className="h-4 w-4 text-violet-400 flex-shrink-0" />
+            <span className="text-sm font-medium text-violet-300">{toast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

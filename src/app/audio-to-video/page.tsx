@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Film,
   Upload,
@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { getFFmpeg, formatTime } from "@/lib/ffmpeg";
 import { fetchFile } from "@ffmpeg/util";
+import AudioPlayer from "@/components/AudioPlayer";
 
 type AudioFormat = "mp3" | "wav" | "aac" | "ogg";
 
@@ -44,6 +45,7 @@ export default function AudioToVideoPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const trimAudioRef = useRef<HTMLAudioElement>(null);
+  const [toast, setToast] = useState("");
 
   const handleFile = useCallback((f: File) => {
     if (!f.type.startsWith("video/")) {
@@ -117,6 +119,7 @@ export default function AudioToVideoPage() {
       const url = URL.createObjectURL(blob);
       setOutputUrl(url);
       setProgress(100);
+      setToast("Audio extracted successfully!");
 
       await ffmpeg.deleteFile(inputName);
       await ffmpeg.deleteFile(outputName);
@@ -170,6 +173,13 @@ export default function AudioToVideoPage() {
     };
   }, [trimEnd, showTrim]);
 
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(""), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   const toggleTrimPreview = () => {
     const audio = trimAudioRef.current;
     if (!audio) return;
@@ -219,6 +229,7 @@ export default function AudioToVideoPage() {
       const url = URL.createObjectURL(blob);
       setTrimmedUrl(url);
       setTrimProgress(100);
+      setToast("Audio trimmed successfully!");
 
       await ffmpeg.deleteFile(inputName);
       await ffmpeg.deleteFile(outputName);
@@ -375,14 +386,8 @@ export default function AudioToVideoPage() {
               animate={{ opacity: 1, y: 0 }}
               className="mb-6"
             >
-              <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <CheckCircle2 className="h-4 w-4 text-green-400" />
-                  <span className="text-sm font-medium text-green-400">
-                    Audio extracted successfully!
-                  </span>
-                </div>
-                <audio controls src={outputUrl} className="w-full mb-3" />
+              <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4">
+                <AudioPlayer src={outputUrl} className="mb-3" />
                 <div className="flex flex-wrap gap-2">
                   <a
                     href={outputUrl}
@@ -443,17 +448,23 @@ export default function AudioToVideoPage() {
                         style={{ left: `${playheadPos}%` }}
                       />
                     )}
-                    <div className="absolute inset-0 flex items-center justify-center gap-[1px] px-2 opacity-30">
-                      {Array.from({ length: 60 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className="bg-pink-400 rounded-full"
-                          style={{
-                            width: "2px",
-                            height: `${Math.random() * 24 + 4}px`,
-                          }}
-                        />
-                      ))}
+                    <div className="absolute inset-0 flex items-center opacity-30">
+                      {Array.from({ length: 60 }).map((_, i) => {
+                        const x = Math.sin(i * 12.9898 + i * 78.233) * 43758.5453;
+                        const height = 4 + (x - Math.floor(x)) * 24;
+                        const leftPercent = (i / 59) * 100;
+                        return (
+                          <div
+                            key={i}
+                            className="absolute bg-pink-400 rounded-full"
+                            style={{
+                              width: "2px",
+                              height: `${height}px`,
+                              left: `calc(${leftPercent}% - 1px)`,
+                            }}
+                          />
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -532,15 +543,9 @@ export default function AudioToVideoPage() {
                     <motion.div
                       initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="mb-4 rounded-lg border border-green-500/20 bg-green-500/5 p-3"
+                      className="mb-4 rounded-lg border border-violet-500/20 bg-violet-500/5 p-3"
                     >
-                      <div className="flex items-center gap-2 mb-2">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
-                        <span className="text-xs font-medium text-green-400">
-                          Trimmed successfully!
-                        </span>
-                      </div>
-                      <audio controls src={trimmedUrl} className="w-full mb-2" />
+                      <AudioPlayer src={trimmedUrl} className="mb-2" />
                       <a
                         href={trimmedUrl}
                         download={`trimmed-audio.${format}`}
@@ -603,6 +608,22 @@ export default function AudioToVideoPage() {
           All processing is done locally in your browser. Your file never leaves your device.
         </p>
       </motion.div>
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/15 backdrop-blur-lg px-5 py-3 shadow-xl shadow-violet-500/10"
+          >
+            <CheckCircle2 className="h-4 w-4 text-violet-400 flex-shrink-0" />
+            <span className="text-sm font-medium text-violet-300">{toast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

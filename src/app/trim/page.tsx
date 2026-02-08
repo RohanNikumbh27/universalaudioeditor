@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Scissors,
   Upload,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { getFFmpeg, formatTime } from "@/lib/ffmpeg";
 import { fetchFile } from "@ffmpeg/util";
+import AudioPlayer from "@/components/AudioPlayer";
 
 export default function TrimPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -34,6 +35,7 @@ export default function TrimPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRef = useRef<HTMLAudioElement | HTMLVideoElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [toast, setToast] = useState("");
 
   const handleFile = useCallback((f: File) => {
     const isAudio = f.type.startsWith("audio/");
@@ -92,6 +94,13 @@ export default function TrimPage() {
     };
   }, [endTime]);
 
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(""), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   const togglePlayback = () => {
     const media = mediaRef.current;
     if (!media || !file) return;
@@ -144,6 +153,7 @@ export default function TrimPage() {
       const url = URL.createObjectURL(blob);
       setOutputUrl(url);
       setProgress(100);
+      setToast("File trimmed successfully!");
 
       await ffmpeg.deleteFile(inputName);
       await ffmpeg.deleteFile(outputName);
@@ -288,17 +298,23 @@ export default function TrimPage() {
                       />
                     )}
                     {/* Waveform decoration */}
-                    <div className="absolute inset-0 flex items-center justify-center gap-[1px] px-2 opacity-30">
-                      {Array.from({ length: 80 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className="bg-violet-400 rounded-full"
-                          style={{
-                            width: "2px",
-                            height: `${Math.random() * 32 + 6}px`,
-                          }}
-                        />
-                      ))}
+                    <div className="absolute inset-0 flex items-center opacity-30">
+                      {Array.from({ length: 80 }).map((_, i) => {
+                        const x = Math.sin(i * 12.9898 + i * 78.233) * 43758.5453;
+                        const height = 6 + (x - Math.floor(x)) * 32;
+                        const leftPercent = (i / 79) * 100;
+                        return (
+                          <div
+                            key={i}
+                            className="absolute bg-violet-400 rounded-full"
+                            style={{
+                              width: "2px",
+                              height: `${height}px`,
+                              left: `calc(${leftPercent}% - 1px)`,
+                            }}
+                          />
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -397,15 +413,9 @@ export default function TrimPage() {
               animate={{ opacity: 1, y: 0 }}
               className="mb-6"
             >
-              <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <CheckCircle2 className="h-4 w-4 text-green-400" />
-                  <span className="text-sm font-medium text-green-400">
-                    File trimmed successfully!
-                  </span>
-                </div>
+              <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4">
                 {fileType === "audio" ? (
-                  <audio controls src={outputUrl} className="w-full mb-3" />
+                  <AudioPlayer src={outputUrl} className="mb-3" />
                 ) : (
                   <video
                     controls
@@ -451,6 +461,22 @@ export default function TrimPage() {
           All processing is done locally in your browser. Your file never leaves your device.
         </p>
       </motion.div>
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/15 backdrop-blur-lg px-5 py-3 shadow-xl shadow-violet-500/10"
+          >
+            <CheckCircle2 className="h-4 w-4 text-violet-400 flex-shrink-0" />
+            <span className="text-sm font-medium text-violet-300">{toast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
